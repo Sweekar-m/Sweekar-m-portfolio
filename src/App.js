@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
+import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { ArrowUpRight, Bot, Code2, Github, Linkedin, Mail, Moon, Rocket, Sparkles, Sun, Terminal, X } from 'lucide-react';
 import './App.css';
 
