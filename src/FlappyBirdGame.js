@@ -8,19 +8,28 @@ const GRAVITY = 0.42;
 const FLAP = -7.2;
 const PIPE_W = 62;
 const GAP = 125;
+const BEST_KEY = "sweekar-neural-flight-best";
+
+const readBest = () => {
+  try { return Number(localStorage.getItem(BEST_KEY) || 0); } catch { return 0; }
+};
+
+const saveBest = value => {
+  try { localStorage.setItem(BEST_KEY, String(value)); } catch { /* storage may be unavailable */ }
+};
 
 export default function FlappyBirdGame() {
   const canvasRef = useRef(null);
   const rafRef = useRef(0);
-  const bestRef = useRef(0);
-  const gameRef = useRef({ birdY: HEIGHT / 2, velocity: 0, pipes: [], score: 0, started: false, over: false, last: 0, speed: 2.7 });
+  const bestRef = useRef(readBest());
+  const gameRef = useRef({ birdY: HEIGHT / 2, velocity: 0, pipes: [], score: 0, started: false, over: false, last: 0, speed: 2.7, trail: [] });
   const [score, setScore] = useState(0);
-  const [best, setBest] = useState(0);
+  const [best, setBest] = useState(bestRef.current);
   const [started, setStarted] = useState(false);
   const [over, setOver] = useState(false);
 
   const reset = () => {
-    gameRef.current = { birdY: HEIGHT / 2, velocity: 0, pipes: [{ x: WIDTH + 80, gapY: 145 + Math.random() * 75, passed: false }], score: 0, started: true, over: false, last: performance.now(), speed: 2.7 };
+    gameRef.current = { birdY: HEIGHT / 2, velocity: 0, pipes: [{ x: WIDTH + 80, gapY: 145 + Math.random() * 75, passed: false }], score: 0, started: true, over: false, last: performance.now(), speed: 2.7, trail: [] };
     setScore(0); setOver(false); setStarted(true);
   };
 
@@ -28,6 +37,7 @@ export default function FlappyBirdGame() {
     const game = gameRef.current;
     if (!game.started || game.over) { reset(); return; }
     game.velocity = FLAP;
+    for (let i = 0; i < 5; i += 1) game.trail.push({ x: BIRD_X - 10 - i * 7, y: game.birdY + (Math.random() - 0.5) * 8, life: 1 });
   };
 
   useEffect(() => {
@@ -41,7 +51,7 @@ export default function FlappyBirdGame() {
     };
     resize(); window.addEventListener("resize", resize);
 
-    const draw = (now) => {
+    const draw = now => {
       const game = gameRef.current;
       const dt = Math.min(2, (now - game.last) / 16.67 || 1);
       game.last = now;
@@ -50,7 +60,6 @@ export default function FlappyBirdGame() {
       bg.addColorStop(0, "#070d20"); bg.addColorStop(1, "#090616");
       ctx.fillStyle = bg; ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-      // Futuristic flight-grid and moving scanline.
       ctx.strokeStyle = "rgba(76,224,255,.055)"; ctx.lineWidth = 1;
       for (let x = 0; x < WIDTH; x += 38) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, HEIGHT); ctx.stroke(); }
       for (let y = 0; y < HEIGHT; y += 38) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WIDTH, y); ctx.stroke(); }
@@ -70,7 +79,9 @@ export default function FlappyBirdGame() {
         for (const pipe of game.pipes) {
           if (!pipe.passed && pipe.x + PIPE_W < BIRD_X) {
             pipe.passed = true; game.score += 1; setScore(game.score);
-            if (game.score > bestRef.current) { bestRef.current = game.score; setBest(game.score); }
+            if (game.score > bestRef.current) {
+              bestRef.current = game.score; setBest(game.score); saveBest(game.score);
+            }
           }
           const hitX = BIRD_X + BIRD_R > pipe.x && BIRD_X - BIRD_R < pipe.x + PIPE_W;
           const hitY = game.birdY - BIRD_R < pipe.gapY - GAP / 2 || game.birdY + BIRD_R > pipe.gapY + GAP / 2;
@@ -79,6 +90,13 @@ export default function FlappyBirdGame() {
         if (game.birdY - BIRD_R < 0 || game.birdY + BIRD_R > HEIGHT) game.over = true;
         if (game.over) setOver(true);
       }
+
+      game.trail = game.trail.filter(dot => dot.life > 0);
+      game.trail.forEach(dot => { dot.x -= 1.2 * dt; dot.life -= 0.055 * dt; });
+      game.trail.forEach(dot => {
+        ctx.globalAlpha = Math.max(0, dot.life * 0.55); ctx.fillStyle = "#4CE0FF";
+        ctx.beginPath(); ctx.arc(dot.x, dot.y, 3 * dot.life, 0, Math.PI * 2); ctx.fill();
+      }); ctx.globalAlpha = 1;
 
       for (const pipe of game.pipes) {
         const topH = pipe.gapY - GAP / 2; const bottomY = pipe.gapY + GAP / 2;
@@ -89,19 +107,16 @@ export default function FlappyBirdGame() {
           ctx.fillRect(x - 5, capY, PIPE_W + 10, 13); ctx.shadowBlur = 0;
           ctx.fillStyle = "rgba(5,7,13,.16)"; ctx.fillRect(x + 9, y, 6, h);
         };
-        drawPipe(pipe.x, 0, topH, topH - 13);
-        drawPipe(pipe.x, bottomY, HEIGHT - bottomY, bottomY);
+        drawPipe(pipe.x, 0, topH, topH - 13); drawPipe(pipe.x, bottomY, HEIGHT - bottomY, bottomY);
       }
 
-      // Neon AI bird.
       ctx.save(); ctx.translate(BIRD_X, game.birdY); ctx.rotate(Math.max(-0.55, Math.min(1.05, game.velocity * 0.065)));
       ctx.shadowBlur = 22; ctx.shadowColor = "#4CE0FF";
       const birdGrad = ctx.createLinearGradient(-16, -16, 16, 16);
       birdGrad.addColorStop(0, "#B9FBFF"); birdGrad.addColorStop(.5, "#4CE0FF"); birdGrad.addColorStop(1, "#8A5CFF");
       ctx.fillStyle = birdGrad; ctx.beginPath(); ctx.arc(0, 0, BIRD_R, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0; ctx.fillStyle = "#05070D"; ctx.beginPath(); ctx.arc(6, -5, 3, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#8A5CFF"; ctx.beginPath(); ctx.moveTo(12, 1); ctx.lineTo(24, 5); ctx.lineTo(12, 8); ctx.closePath(); ctx.fill();
-      ctx.restore();
+      ctx.fillStyle = "#8A5CFF"; ctx.beginPath(); ctx.moveTo(12, 1); ctx.lineTo(24, 5); ctx.lineTo(12, 8); ctx.closePath(); ctx.fill(); ctx.restore();
 
       if (!game.started || game.over) {
         ctx.fillStyle = "rgba(5,7,13,.63)"; ctx.fillRect(0, 0, WIDTH, HEIGHT); ctx.textAlign = "center";
@@ -118,9 +133,9 @@ export default function FlappyBirdGame() {
 
   return <div className="glass-card flappy-card">
     <div className="section-kicker">NEURAL FLIGHT · FLAPPY MODE</div>
-    <div className="game-top"><div><span>Score</span><strong>{score}</strong></div><div><span>Best</span><strong>{best}</strong></div><div><span>Control</span><strong>SPACE</strong></div></div>
+    <div className="game-top"><div><span>Score</span><strong>{score}</strong></div><div><span>Best</span><strong>{best}</strong></div><div><span>Control</span><strong>SPACE / ↑</strong></div></div>
     <button className="flappy-board" onClick={flap} aria-label="Play Neural Flight"><canvas ref={canvasRef} /></button>
-    <div className="game-hint">Tap / click or press <b>SPACE</b> / <b>↑</b> to flap · Navigate the AI data gates</div>
+    <div className="game-hint">Tap, click, or press <b>SPACE</b> / <b>↑</b> to flap · Your best score is saved on this device.</div>
     <button className="primary-btn game-start" onClick={started && !over ? flap : reset}>{started && !over ? "Flap" : over ? "Restart run" : "Start run"}</button>
   </div>;
 }
