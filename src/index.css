@@ -1,1 +1,4 @@
-body{margin:0}*{box-sizing:border-box}html{background:#05070D}::selection{background:rgba(76,224,255,.28);color:#fff}
+:root { background: #101010; }
+* { box-sizing: border-box; }
+body { min-height: 100vh; }
+::selection { background: #fffdf9; color: #101010; }
